@@ -20,22 +20,33 @@ alpha(λ::Number, i::Number)::Number = -λ / sin(i)
 
 betaSquared(λ::Number, η::Number, i::Number, a::Number)::Number = η + a^2 * cos(i)^2 - λ^2 * tan(i)^-2
 
-@views function compute_critical_curve(spin::Number, inc_deg::Number, nPoints::Int64)
+# one should only set threads to true if running this function without parallelization. This function is quite fast already for points ≤ 1e6, so there isn't much of a need to run a single call using threads.
+@views function compute_critical_curve(spin::Number, inc_deg::Number, nPoints::Int64; threads::Bool=false)
     α = zeros(nPoints); β = zeros(nPoints);
     inc_rad = deg2rad(inc_deg)
 
     r_plus = r_critc_plus(spin)
     r_minus = r_critc_minus(spin)
     r = range(start = r_minus, stop = r_plus, length = nPoints) |> collect
-    @inbounds for i in eachindex(r)
-        λ = lambda(r[i], spin)
-        η = eta(r[i], spin)
-        α[i] = alpha(λ, inc_rad)
-        β[i] = betaSquared(λ, η, inc_rad, spin)
+    if threads
+        @inbounds Threads.@threads for i in eachindex(r)
+            λ = lambda(r[i], spin)
+            η = eta(r[i], spin)
+            α[i] = alpha(λ, inc_rad)
+            β[i] = betaSquared(λ, η, inc_rad, spin)
+    
+            β[i] > 0.0 ? β[i] = sqrt(β[i]) : (β[i] = NaN; α[i] = NaN)
+        end
+    else
+        @inbounds for i in eachindex(r)
+            λ = lambda(r[i], spin)
+            η = eta(r[i], spin)
+            α[i] = alpha(λ, inc_rad)
+            β[i] = betaSquared(λ, η, inc_rad, spin)
 
-        β[i] > 0.0 ? β[i] = sqrt(β[i]) : (β[i] = NaN; α[i] = NaN)
+            β[i] > 0.0 ? β[i] = sqrt(β[i]) : (β[i] = NaN; α[i] = NaN)
+        end
     end
-    # return filter!(!isnan, α), filter!(!isnan, β)
     return α, β
 end
 
